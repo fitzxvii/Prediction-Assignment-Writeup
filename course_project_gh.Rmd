@@ -1,0 +1,123 @@
+---
+title: "Prediction Assignment Writeup"
+author: "Fitz Gerald M. Villegas"
+date: "11/14/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+## Data
+
+The training data for this project are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+## Analysis
+
+For the Analysis, I will first start the packages that I will use for this prediction, download the datasets needed and store the data in their own perspective variable.
+
+```{r}
+#Loading the packages
+suppressPackageStartupMessages(library(caret))
+suppressPackageStartupMessages(library(randomForest))
+
+#Download the datasets
+training_url <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+testing_url <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+training_file <- "training.csv"
+testing_file <- "testing.csv"
+if(!file.exists(training_file)) {
+    download.file(training_url, destfile=training_file)
+}
+if(!file.exists(testing_file)) {
+    download.file(testing_url, destfile=testing_file)
+}
+
+#Store the data in the variable
+training <- read.csv(training_file, na.strings=c("NA", ""))
+test <- read.csv(testing_file, na.strings=c("NA", ""))
+```
+
+After checking the names and values of all columns of the datasets, I remove the first seven columns because these values are irrelevant and non-numeric. They also have little influence on predication. I also remove the predictors with NA values.
+
+```{r}
+#Removing NA values
+training <- training[, colSums(is.na(training))==0]
+test <- test[, colSums(is.na(test))==0]
+
+#Removing the first seven columns
+training <- training[, -c(1:7)]
+test <- test[, -c(1:7)]
+```
+
+Now we split the training data into two parts. We'll use 70% of this data to actually train our model and the remaining 30% to validate it:
+
+```{r}
+# Now split the training into to as actual testing and validation
+set.seed(1234) # Don't forget the reproducibility!  
+inTrain <- createDataPartition(training$classe, p = 0.7, list = FALSE)
+train <- training[inTrain, ]
+valid <- training[-inTrain, ]
+```
+
+I use 5-fold cross validation, which is compromise of accuracy and efficiency for my low spec computer.
+
+```{r}
+fitControl <- trainControl(method='cv', number = 5)
+```
+
+At this point, we have a tidy data that we can use for building models. We'll build two models: a random forest and a generalized boosted model. We'll train these in the training portion of the original training dataset and then test them in the validation portion of the original training dataset:
+
+```{r}
+rfModel <- randomForest(as.factor(classe) ~ ., 
+                         data = train, 
+                         importance = FALSE, 
+                         trControl = fitControl)
+rfModel
+```
+```{r}
+set.seed(1234)
+gbmModel <- train(as.factor(classe) ~ ., data=train, method = "gbm", trControl = fitControl, verbose = FALSE)
+gbmModel
+```
+
+We use the confusion matrix to describe the performance of our Random Forest model and the Generalized Boosted Model.
+
+Confusion matrix for RFM:
+```{r}
+pred <- predict(rfModel, valid)
+confMat <- confusionMatrix(as.factor(valid$classe), pred)
+confMat
+```
+
+
+```{r}
+confMat$overall[1]
+```
+Confusion Matrix for GBM:
+```{r}
+pred2 <- predict(gbmModel, valid)
+confMat2 <- confusionMatrix(as.factor(valid$classe), pred2)
+confMat2
+```
+```{r}
+confMat2$overall[1]
+```
+## Predicting the Test Set
+
+By comparing the accuracy rate values of the two models, it is clear the the ‘Random Forest’ model is the winner. So will use it on the validation data.
+
+```{r}
+predict(rfModel, test)
+```
